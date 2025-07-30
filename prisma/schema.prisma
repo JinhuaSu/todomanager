@@ -1,0 +1,56 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Task {
+  id          String   @id @default(cuid())
+  title       String
+  description String?
+  startTime   DateTime
+  endTime     DateTime
+  duration    Int      // 专注时长（分钟）
+  status      TaskStatus @default(PENDING)
+  completion  Int      @default(0) // 完成度 0-100
+  notes       String?  // 心得
+  taskType    String   // 任务类型
+  score       Float    @default(0) // 评分
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model ScoreRule {
+  id          String   @id @default(cuid())
+  taskType    String   @unique
+  baseScore   Float    // 基础分数
+  timeFactor  Float    @default(1.0) // 时间因子
+  priority    Int      @default(1) // 优先级
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model DailyScore {
+  id        String   @id @default(cuid())
+  date      DateTime @db.Date
+  totalScore Float   @default(0)
+  taskCount Int      @default(0)
+  level     Int      @default(0) // 等级
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([date])
+}
+
+enum TaskStatus {
+  PENDING
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+} 

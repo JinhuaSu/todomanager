@@ -1,0 +1,1 @@
+# 使用千问大模型测试实现日历的抽取和打分 使用.env中的DASHSCOPE_API_KEY
