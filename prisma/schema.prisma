@@ -48,9 +48,69 @@ model DailyScore {
   @@unique([date])
 }
 
+// 能力系统
+model Ability {
+  id          String   @id @default(cuid())
+  name        String   @unique // 能力名称：知识、魅力、勇气、体贴、灵巧
+  displayName String   // 显示名称
+  description String   // 能力描述
+  currentExp  Int      @default(0) // 当前经验值
+  level       Int      @default(1) // 当前等级
+  maxLevel    Int      @default(10) // 最大等级
+  icon        String?  // 图标
+  color       String   // 颜色
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+// 任务类型与能力关联
+model TaskTypeAbility {
+  id         String   @id @default(cuid())
+  taskType   String   // 任务类型
+  abilityId  String   // 关联的能力ID
+  expGain    Int      // 获得的经验值
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@unique([taskType, abilityId])
+}
+
+// 奖励系统
+model Reward {
+  id          String   @id @default(cuid())
+  name        String   @unique // 奖励名称
+  description String   // 奖励描述
+  type        RewardType // 奖励类型
+  value       Int      // 奖励数值
+  icon        String?  // 图标
+  isUnlocked  Boolean  @default(false) // 是否已解锁
+  unlockCondition String? // 解锁条件
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+// 用户成就
+model Achievement {
+  id          String   @id @default(cuid())
+  name        String   @unique // 成就名称
+  description String   // 成就描述
+  icon        String?  // 图标
+  isUnlocked  Boolean  @default(false) // 是否已解锁
+  unlockCondition String? // 解锁条件
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
 enum TaskStatus {
   PENDING
   IN_PROGRESS
   COMPLETED
   CANCELLED
+}
+
+enum RewardType {
+  EXP_BOOST    // 经验加成
+  SCORE_BOOST  // 分数加成
+  TIME_BOOST   // 时间加成
+  SPECIAL_ITEM // 特殊物品
 } 

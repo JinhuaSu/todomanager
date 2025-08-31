@@ -3,6 +3,10 @@
 import { useState, useEffect } from 'react';
 import SimpleTaskForm from '@/components/SimpleTaskForm';
 import SimpleTaskList from '@/components/SimpleTaskList';
+import AbilityRadarChart from '@/components/AbilityRadarChart';
+import AbilityUpgradeModal from '@/components/AbilityUpgradeModal';
+import RewardSystem from '@/components/RewardSystem';
+import EnhancedCalendarImport from '@/components/EnhancedCalendarImport';
 
 interface Task {
   id: string;
@@ -24,13 +28,61 @@ interface ScoreData {
   level: number;
 }
 
+interface Ability {
+  id: string;
+  name: string;
+  displayName: string;
+  description: string;
+  currentExp: number;
+  level: number;
+  maxLevel: number;
+  icon?: string;
+  color: string;
+}
+
+interface Reward {
+  id: string;
+  name: string;
+  description: string;
+  type: 'EXP_BOOST' | 'SCORE_BOOST' | 'TIME_BOOST' | 'SPECIAL_ITEM';
+  value: number;
+  icon?: string;
+  isUnlocked: boolean;
+  unlockCondition?: string;
+}
+
+interface Achievement {
+  id: string;
+  name: string;
+  description: string;
+  icon?: string;
+  isUnlocked: boolean;
+  unlockCondition?: string;
+}
+
 export default function Home() {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [scores, setScores] = useState<ScoreData[]>([]);
+  const [abilities, setAbilities] = useState<Ability[]>([]);
+  const [rewards, setRewards] = useState<Reward[]>([]);
+  const [achievements, setAchievements] = useState<Achievement[]>([]);
   const [showForm, setShowForm] = useState(false);
   const [editingTask, setEditingTask] = useState<Task | null>(null);
   const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
   const [loading, setLoading] = useState(true);
+  const [showAbilityUpgrade, setShowAbilityUpgrade] = useState(false);
+  const [showCalendarImport, setShowCalendarImport] = useState(false);
+  const [upgradeData, setUpgradeData] = useState<{
+    ability: Ability | null;
+    oldLevel: number;
+    newLevel: number;
+    expGained: number;
+  }>({
+    ability: null,
+    oldLevel: 0,
+    newLevel: 0,
+    expGained: 0
+  });
 
   // 获取任务列表
   const fetchTasks = async (date?: string) => {
@@ -55,10 +107,53 @@ export default function Home() {
     }
   };
 
+  // 获取能力数据
+  const fetchAbilities = async () => {
+    try {
+      const response = await fetch('/api/abilities');
+      const data = await response.json();
+      setAbilities(data);
+    } catch (error) {
+      console.error('Error fetching abilities:', error);
+    }
+  };
+
+  // 获取奖励和成就数据
+  const fetchRewardsAndAchievements = async () => {
+    try {
+      const response = await fetch('/api/rewards');
+      const data = await response.json();
+      setRewards(data.rewards);
+      setAchievements(data.achievements);
+    } catch (error) {
+      console.error('Error fetching rewards and achievements:', error);
+    }
+  };
+
+  // 初始化数据
+  const initializeData = async () => {
+    try {
+      await Promise.all([
+        fetch('/api/abilities', { method: 'POST' }),
+        fetch('/api/rewards', { method: 'POST' })
+      ]);
+    } catch (error) {
+      console.error('Error initializing data:', error);
+    }
+  };
+
   useEffect(() => {
-    fetchTasks(selectedDate);
-    fetchScores();
-    setLoading(false);
+    const loadData = async () => {
+      await initializeData();
+      await Promise.all([
+        fetchTasks(selectedDate),
+        fetchScores(),
+        fetchAbilities(),
+        fetchRewardsAndAchievements()
+      ]);
+      setLoading(false);
+    };
+    loadData();
   }, [selectedDate]);
 
   // 添加任务
@@ -74,6 +169,9 @@ export default function Home() {
         setShowForm(false);
         fetchTasks(selectedDate);
         fetchScores();
+        
+        // 根据任务类型给予能力经验值
+        await grantAbilityExp(taskData.taskType, 10);
       }
     } catch (error) {
       console.error('Error adding task:', error);
@@ -129,6 +227,14 @@ export default function Home() {
       if (response.ok) {
         fetchTasks(selectedDate);
         fetchScores();
+        
+        // 如果任务完成，给予能力经验值
+        if (status === 'COMPLETED') {
+          const task = tasks.find(t => t.id === id);
+          if (task) {
+            await grantAbilityExp(task.taskType, 20);
+          }
+        }
       }
     } catch (error) {
       console.error('Error updating task status:', error);
@@ -150,6 +256,94 @@ export default function Home() {
       }
     } catch (error) {
       console.error('Error updating task completion:', error);
+    }
+  };
+
+  // 给予能力经验值
+  const grantAbilityExp = async (taskType: string, expGain: number) => {
+    try {
+      // 根据任务类型映射到能力
+      const abilityMapping: { [key: string]: string } = {
+        '学习': 'knowledge',
+        '阅读': 'knowledge',
+        '社交': 'charm',
+        '运动': 'courage',
+        '帮助': 'kindness',
+        '手工': 'dexterity',
+        '工作': 'courage',
+        '管理': 'knowledge',
+        '休息': 'kindness',
+        '其他': 'knowledge'
+      };
+
+      const abilityName = abilityMapping[taskType] || 'knowledge';
+      const ability = abilities.find(a => a.name === abilityName);
+      
+      if (ability) {
+        const response = await fetch('/api/abilities', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            abilityId: ability.id,
+            expGain: expGain
+          }),
+        });
+
+        if (response.ok) {
+          const result = await response.json();
+          
+          if (result.leveledUp) {
+            setUpgradeData({
+              ability: result.ability,
+              oldLevel: result.oldLevel,
+              newLevel: result.newLevel,
+              expGained: result.expGained
+            });
+            setShowAbilityUpgrade(true);
+          }
+          
+          fetchAbilities();
+        }
+      }
+    } catch (error) {
+      console.error('Error granting ability exp:', error);
+    }
+  };
+
+  // 处理日历导入
+  const handleCalendarImport = async (events: any[]) => {
+    try {
+      for (const event of events) {
+        // 创建任务
+        const taskData = {
+          title: event.title,
+          startTime: event.startTime,
+          endTime: event.endTime,
+          duration: event.duration,
+          taskType: event.taskType,
+          status: 'PENDING',
+          completion: 0,
+          score: event.expGain
+        };
+
+        const response = await fetch('/api/tasks', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(taskData),
+        });
+
+        if (response.ok) {
+          // 给予能力经验值
+          await grantAbilityExp(event.taskType, event.expGain);
+        }
+      }
+
+      // 刷新数据
+      fetchTasks(selectedDate);
+      fetchScores();
+      setShowCalendarImport(false);
+    } catch (error) {
+      console.error('Error importing calendar events:', error);
     }
   };
 
@@ -190,6 +384,12 @@ export default function Home() {
                 onChange={(e) => setSelectedDate(e.target.value)}
                 className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
+              <button
+                onClick={() => setShowCalendarImport(true)}
+                className="bg-green-600 text-white px-4 py-2 rounded-md hover:bg-green-700 flex items-center gap-2"
+              >
+                智能导入日历
+              </button>
               <button
                 onClick={() => setShowForm(true)}
                 className="bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700 flex items-center gap-2"
@@ -250,8 +450,21 @@ export default function Home() {
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+          {/* 能力雷达图 */}
+          <div className="lg:col-span-1">
+            <div className="bg-white rounded-lg shadow-sm p-6">
+              <h2 className="text-lg font-semibold mb-4">能力成长</h2>
+              <AbilityRadarChart abilities={abilities} size={280} />
+            </div>
+          </div>
+
+          {/* 奖励系统 */}
+          <div className="lg:col-span-1">
+            <RewardSystem rewards={rewards} achievements={achievements} />
+          </div>
+
           {/* 任务列表 */}
-          <div className="lg:col-span-3">
+          <div className="lg:col-span-1">
             <div className="bg-white rounded-lg shadow-sm p-6">
               <h2 className="text-lg font-semibold mb-4">今日任务</h2>
               <SimpleTaskList
@@ -285,6 +498,33 @@ export default function Home() {
           />
         </div>
       )}
+
+      {/* 日历导入模态框 */}
+      {showCalendarImport && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+                  <div className="bg-white rounded-lg max-w-4xl w-full max-h-[90vh] overflow-y-auto">
+          <EnhancedCalendarImport onImport={handleCalendarImport} />
+          <div className="p-4 border-t">
+            <button
+              onClick={() => setShowCalendarImport(false)}
+              className="bg-gray-500 text-white px-4 py-2 rounded-md hover:bg-gray-600"
+            >
+              关闭
+            </button>
+          </div>
+        </div>
+        </div>
+      )}
+
+      {/* 能力提升模态框 */}
+      <AbilityUpgradeModal
+        isOpen={showAbilityUpgrade}
+        onClose={() => setShowAbilityUpgrade(false)}
+        upgradedAbility={upgradeData.ability}
+        oldLevel={upgradeData.oldLevel}
+        newLevel={upgradeData.newLevel}
+        expGained={upgradeData.expGained}
+      />
     </div>
   );
 }
